@@ -34,6 +34,10 @@ public enum SecurityWebFiltersOrder {
 	/**
 	 * Instance of AuthenticationWebFilter
 	 */
+	X509,
+	/**
+	 * Instance of AuthenticationWebFilter
+	 */
 	HTTP_BASIC,
 	/**
 	 * Instance of AuthenticationWebFilter

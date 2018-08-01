@@ -20,9 +20,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.ReactiveAdapterRegistry;
+import org.springframework.security.authentication.PreauthUserDetailsRepositoryReactiveAuthenticationManager;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UserDetailsRepositoryReactiveAuthenticationManager;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.core.userdetails.PreauthMapReactiveUserDetailsService;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.reactive.result.method.annotation.AuthenticationPrincipalArgumentResolver;
@@ -44,6 +46,9 @@ class ServerHttpSecurityConfiguration implements WebFluxConfigurer {
 
 	@Autowired(required = false)
 	private ReactiveAuthenticationManager authenticationManager;
+
+	@Autowired(required = false)
+	private PreauthMapReactiveUserDetailsService preauthReactiveUserDetailsService;
 
 	@Autowired(required = false)
 	private ReactiveUserDetailsService reactiveUserDetailsService;
@@ -73,6 +78,11 @@ class ServerHttpSecurityConfiguration implements WebFluxConfigurer {
 	private ReactiveAuthenticationManager authenticationManager() {
 		if(this.authenticationManager != null) {
 			return this.authenticationManager;
+		}
+		if(this.preauthReactiveUserDetailsService != null) {
+			PreauthUserDetailsRepositoryReactiveAuthenticationManager manager =
+				new PreauthUserDetailsRepositoryReactiveAuthenticationManager(this.preauthReactiveUserDetailsService);
+			return manager;
 		}
 		if(this.reactiveUserDetailsService != null) {
 			UserDetailsRepositoryReactiveAuthenticationManager manager =

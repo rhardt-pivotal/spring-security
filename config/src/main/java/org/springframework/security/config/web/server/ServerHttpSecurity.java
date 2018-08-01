@@ -24,43 +24,16 @@ import org.springframework.security.authorization.AuthenticatedReactiveAuthoriza
 import org.springframework.security.authorization.AuthorityReactiveAuthorizationManager;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.ReactiveAuthorizationManager;
-import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.MatcherSecurityWebFilterChain;
-import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.ServerFormLoginAuthenticationConverter;
-import org.springframework.security.web.server.ServerHttpBasicAuthenticationConverter;
-import org.springframework.security.web.server.authentication.AuthenticationWebFilter;
-import org.springframework.security.web.server.authentication.HttpBasicServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.authentication.RedirectServerAuthenticationFailureHandler;
-import org.springframework.security.web.server.authentication.RedirectServerAuthenticationSuccessHandler;
-import org.springframework.security.web.server.authentication.ServerAuthenticationEntryPointFailureHandler;
-import org.springframework.security.web.server.authentication.ServerAuthenticationFailureHandler;
-import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
+import org.springframework.security.web.server.*;
+import org.springframework.security.web.server.authentication.*;
 import org.springframework.security.web.server.authentication.logout.LogoutWebFilter;
 import org.springframework.security.web.server.authentication.logout.ServerLogoutHandler;
 import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
-import org.springframework.security.web.server.authorization.AuthorizationContext;
-import org.springframework.security.web.server.authorization.AuthorizationWebFilter;
-import org.springframework.security.web.server.authorization.DelegatingReactiveAuthorizationManager;
-import org.springframework.security.web.server.authorization.ExceptionTranslationWebFilter;
-import org.springframework.security.web.server.authorization.ServerAccessDeniedHandler;
-import org.springframework.security.web.server.context.NoOpServerSecurityContextRepository;
-import org.springframework.security.web.server.context.ReactorContextWebFilter;
-import org.springframework.security.web.server.context.SecurityContextServerWebExchangeWebFilter;
-import org.springframework.security.web.server.context.ServerSecurityContextRepository;
-import org.springframework.security.web.server.context.WebSessionServerSecurityContextRepository;
+import org.springframework.security.web.server.authorization.*;
+import org.springframework.security.web.server.context.*;
 import org.springframework.security.web.server.csrf.CsrfWebFilter;
 import org.springframework.security.web.server.csrf.ServerCsrfTokenRepository;
-import org.springframework.security.web.server.header.CacheControlServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.CompositeServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.ContentTypeOptionsServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.HttpHeaderWriterWebFilter;
-import org.springframework.security.web.server.header.ServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.StrictTransportSecurityServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.XFrameOptionsServerHttpHeadersWriter;
-import org.springframework.security.web.server.header.XXssProtectionServerHttpHeadersWriter;
+import org.springframework.security.web.server.header.*;
 import org.springframework.security.web.server.savedrequest.NoOpServerRequestCache;
 import org.springframework.security.web.server.savedrequest.ServerRequestCache;
 import org.springframework.security.web.server.savedrequest.ServerRequestCacheWebFilter;
@@ -104,6 +77,8 @@ public class ServerHttpSecurity {
 	private ExceptionHandlingSpec exceptionHandling = new ExceptionHandlingSpec();
 
 	private HttpBasicSpec httpBasic;
+
+	private X509Spec x509;
 
 	private final RequestCacheSpec requestCache = new RequestCacheSpec();
 
@@ -175,6 +150,13 @@ public class ServerHttpSecurity {
 		return this.formLogin;
 	}
 
+	public X509Spec x509() {
+		if(this.x509 == null) {
+			this.x509 = new X509Spec();
+		}
+		return this.x509;
+	}
+
 	public HeaderSpec headers() {
 		if(this.headers == null) {
 			this.headers = new HeaderSpec();
@@ -226,6 +208,10 @@ public class ServerHttpSecurity {
 		}
 		if(this.csrf != null) {
 			this.csrf.configure(this);
+		}
+		if(this.x509 != null) {
+			this.x509.authenticationManager(this.authenticationManager);
+			this.x509.configure(this);
 		}
 		if(this.httpBasic != null) {
 			this.httpBasic.authenticationManager(this.authenticationManager);
@@ -523,6 +509,66 @@ public class ServerHttpSecurity {
 
 		private HttpBasicSpec() {}
 	}
+
+
+	/**
+	 * @author Rob Hardt
+	 * @since 5.0.3
+	 */
+	public class X509Spec {
+		private ReactiveAuthenticationManager authenticationManager;
+
+		private ServerSecurityContextRepository securityContextRepository = NoOpServerSecurityContextRepository.getInstance();
+
+		//private ServerAuthenticationEntryPoint entryPoint = new HttpBasicServerAuthenticationEntryPoint();
+
+		private ServerX509AuthenticationConverter converter = new ServerX509AuthenticationConverter();
+
+		private List<String> defaultAuthorities = null;
+
+		private List<String> defaultRoles = null;
+
+		public X509Spec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
+			this.authenticationManager = authenticationManager;
+			return this;
+		}
+
+		public X509Spec securityContextRepository(ServerSecurityContextRepository securityContextRepository) {
+			this.securityContextRepository = securityContextRepository;
+			return this;
+		}
+
+		public X509Spec subjectPrincipalRegex(String subjectDnRegex) {
+			Assert.hasText(subjectDnRegex, "Regular expression may not be null or empty");
+			converter.setSubjectPrincipalRegex(subjectDnRegex);
+			return this;
+		}
+
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		public ServerHttpSecurity disable() {
+			ServerHttpSecurity.this.x509 = null;
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			AuthenticationWebFilter authenticationFilter = new AuthenticationWebFilter(
+				this.authenticationManager);
+			//authenticationFilter.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(this.entryPoint));
+			authenticationFilter.setAuthenticationConverter(converter);
+			if(this.securityContextRepository != null) {
+				authenticationFilter.setSecurityContextRepository(this.securityContextRepository);
+			}
+			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.X509);
+		}
+
+		private X509Spec() {}
+	}
+
+
+
 
 	/**
 	 * @author Rob Winch
